@@ -1,63 +1,59 @@
-const fs = require('fs');
-const express = require('express');
+import express from 'express';
+import pg from 'pg';
 
-const FILE = '../pets.json';
-
-fs.readFile(FILE, (err, file) => {
-    if (err) {
-        console.error(err);
-        process.exit(1);
-    }
-    makeServer(JSON.parse(file));
+const psql = new pg.Client({
+    host: 'localhost',
+    database: 'postgres',
+    user: 'postgres',
+    password: 'postgres'
 });
 
+await psql.connect();
 
-function makeServer(initParsed) {
-    const app = express();
-    let parsed = initParsed;
+const app = express();
 
-    app.use((req, res, next) => {
-        console.log(`Request: ${req.method} ${req.url}`);
+app.use((req, res, next) => {
+    console.log(`Request: ${req.method} ${req.url}`);
+    next();
+});
+
+app.get('/pets', (req, res) => getAllPets(req, res, psql));
+
+app.get('/pets/:idx', (req, res, next) => {
+    const idx = parseInt(req.params.idx);
+    if (idx < 0 || idx >= parsed.length) {
         next();
-    });
+    }
+    res.json(parsed[idx]);
+});
 
-    app.get('/pets', (req, res) => getAllPets(req, res, parsed));
+app.post(
+    '/pets',
+    express.json({type: '*/*'}),
+    (req, res, next) => postAPet(req, res, parsed, next)
+);
 
-    app.get('/pets/:idx', (req, res, next) => {
-        const idx = parseInt(req.params.idx);
-        if (idx < 0 || idx >= parsed.length) {
-            next();
-        }
-        res.json(parsed[idx]);
-    });
+app.patch(
+    '/pets/:idx',
+    express.json({type: '*/*'}),
+    (req, res, next) => patchAPet(req, res, parsed, next)
+);
 
-    app.post(
-        '/pets',
-        express.json({type: '*/*'}),
-        (req, res, next) => postAPet(req, res, parsed, next)
-    );
+app.delete(
+    '/pets/:idx',
+    (req, res, next) => deleteAPet(req, res, parsed, next)
+);
 
-    app.patch(
-        '/pets/:idx',
-        express.json({type: '*/*'}),
-        (req, res, next) => patchAPet(req, res, parsed, next)
-    );
+app.use((req, res, next) => {
+    res.status(404).set('Content-Type', 'text/plain').send('Not Found');
+});
 
-    app.delete(
-        '/pets/:idx',
-        (req, res, next) => deleteAPet(req, res, parsed, next)
-    );
-
-    app.use((req, res, next) => {
-        res.status(404).set('Content-Type', 'text/plain').send('Not Found');
-    });
-
-    app.listen(8003);
-}
+app.listen(8003);
 
 
-function getAllPets(req, res, parsed) {
-    res.json(parsed);
+async function getAllPets(req, res, psql) {
+    const result = await psql.query('SELECT age, name, kind FROM pets');
+    res.json(result.rows);
 }
 
 function postAPet(req, res, parsed, next) {
